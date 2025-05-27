@@ -1,0 +1,160 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  events        Event[]
+  knowledgeBases KnowledgeBase[]
+  aiChats       AIChat[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  name        String
+  description String?  @db.Text
+  startDate   DateTime
+  endDate     DateTime?
+  location    Json     // { type: 'physical' | 'virtual', address?, url? }
+  host        Json     // { name, email?, website? }
+  sourceUrl   String
+  platform    String
+  pricing     Json?    // { type: 'free' | 'paid', amount?, currency? }
+  images      String[]
+  tags        String[]
+  metadata    Json?
+  scrapedAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  status      EventStatus @default(ACTIVE)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  // AI-enhanced fields
+  aiSummary      String?   @db.Text
+  aiTags         String[]
+  aiCategory     String?
+  aiScore        Float?    // Event quality/relevance score
+  embedding      Float[]   // Vector embedding for semantic search
+  sentiment      Json?     // Sentiment analysis results
+  keyInsights    String[]  // AI-extracted key points
+  
+  // RAG-specific fields
+  chunks         EventChunk[]
+  ragMetadata    Json?     // Stores chunking strategy, model used, etc.
+}
+
+model EventChunk {
+  id          String   @id @default(cuid())
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id])
+  content     String   @db.Text
+  embedding   Float[]  // Vector embedding for this chunk
+  metadata    Json?    // Position, type (description, agenda, etc.)
+  chunkIndex  Int
+  createdAt   DateTime @default(now())
+  
+  @@index([eventId])
+  @@index([embedding(ops: VectorOps)])
+}
+
+model KnowledgeBase {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  name        String
+  description String?
+  documents   Document[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Document {
+  id             String   @id @default(cuid())
+  knowledgeId    String
+  knowledgeBase  KnowledgeBase @relation(fields: [knowledgeId], references: [id])
+  title          String
+  content        String   @db.Text
+  chunks         DocumentChunk[]
+  sourceType     String   // 'upload', 'url', 'manual'
+  metadata       Json?
+  createdAt      DateTime @default(now())
+}
+
+model DocumentChunk {
+  id          String   @id @default(cuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id])
+  content     String   @db.Text
+  embedding   Float[]
+  metadata    Json?
+  chunkIndex  Int
+  
+  @@index([documentId])
+  @@index([embedding(ops: VectorOps)])
+}
+
+model AIChat {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  messages    Json[]   // Chat history with RAG context
+  context     Json?    // Current context/filters
+  relevantDocs Json[]  // Retrieved documents used in conversation
+  createdAt   DateTime @default(now())
+}
+
+enum EventStatus {
+  ACTIVE
+  CANCELLED
+  COMPLETED
+  DRAFT
+} 
